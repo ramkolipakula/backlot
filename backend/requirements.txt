@@ -8,3 +8,5 @@ google-adk>=2.8.0
 mcp>=1.29.0,<2.0.0
 sse-starlette>=1.6.5
 python-dotenv>=1.0.0
+
+networkx>=3.0

@@ -6,7 +6,7 @@ from sse_starlette.sse import EventSourceResponse
 from dotenv import load_dotenv
 
 from backend.agent.backlot_agent import BacklotAgentRunner
-
+from backend.engine.cpm import ProductionCPMEngine
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +33,15 @@ async def stream(query: str):
     """
     runner = BacklotAgentRunner()
     return EventSourceResponse(runner.stream_generator(query))
+
+@app.get("/api/incident")
+async def get_incident():
+    """
+    Returns the deterministic incident, causal graph, baseline financial model,
+    and counterfactual interventions.
+    """
+    engine = ProductionCPMEngine()
+    return engine.process_incident()
 
 
 if __name__ == "__main__":

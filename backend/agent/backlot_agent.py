@@ -18,6 +18,8 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from google.genai import types as genai_types
 from mcp import StdioServerParameters
 
+from backend.engine.cpm import ProductionCPMEngine
+
 logger = logging.getLogger("backlot.agent")
 
 def resolve_mcp_grafana_command():
@@ -328,6 +330,29 @@ STRICT RULES:
                         {"message": "Phase 1 investigation complete. Check TELEMETRY_RECEIVED events for evidence."},
                     )
                 )
+
+                # ---- Phase 2: Deterministic CPM Engine -----------------------
+                await self._queue.put(
+                    self._evt(
+                        "RUNNING_CPM_ENGINE",
+                        {"message": "Running deterministic Causal Dependency Graph and CPM calculations..."},
+                    )
+                )
+                try:
+                    cpm_engine = ProductionCPMEngine()
+                    investigation_result = cpm_engine.process_incident()
+                    await self._queue.put(
+                        self._evt(
+                            "CPM_RESULT",
+                            {"result": investigation_result.model_dump()}
+                        )
+                    )
+                except Exception as e:
+                    logger.error("CPM Engine failed: %s", e)
+                    await self._queue.put(
+                        self._evt("ERROR", {"code": "CPM_ERROR", "message": str(e), "stage": "cpm_execution"})
+                    )
+
             finally:
                 await toolset.close()
 
