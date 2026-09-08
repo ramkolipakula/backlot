@@ -1,0 +1,10 @@
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+google-genai>=2.19.0
+google-adk>=2.8.0
+# mcp 1.29.x is required for google-adk McpToolset compatibility
+# mcp 2.x breaks McpToolset (missing mcp.shared.session)
+mcp>=1.29.0,<2.0.0
+sse-starlette>=1.6.5
+python-dotenv>=1.0.0
