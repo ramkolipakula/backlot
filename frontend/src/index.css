@@ -587,3 +587,324 @@ h1, h2, h3 {
   color: var(--accent);
   letter-spacing: 0.1em;
 }
+
+/* ── Phase 4: Approval Panel ─────────────────────────────────────────────── */
+
+.approval-panel {
+  border: 1px solid var(--success);
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.approval-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.approve-btn {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%);
+  border: 2px solid var(--success);
+  border-radius: 6px;
+  color: var(--success);
+  font-size: 1rem;
+  font-weight: bold;
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+.approve-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
+}
+
+.approve-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ── Recording state ── */
+
+.recording-state {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+
+.recording-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Success state ── */
+
+.success-state {
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  padding: 1.25rem;
+  background: rgba(16, 185, 129, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.success-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: bold;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--success);
+  letter-spacing: 0.05em;
+}
+
+.success-icon {
+  font-size: 1.2rem;
+}
+
+.success-scenario-name {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text-main);
+  font-weight: bold;
+}
+
+.success-detail-line {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.success-detail-line .sdl-val {
+  color: var(--text-main);
+}
+
+.success-grafana-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  border-top: 1px solid var(--panel-border);
+  padding-top: 0.5rem;
+}
+
+/* ── Failure state ── */
+
+.failure-state {
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 1.25rem;
+  background: rgba(239, 68, 68, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.failure-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: bold;
+  font-family: var(--font-mono);
+  color: var(--danger);
+  letter-spacing: 0.05em;
+}
+
+.failure-detail {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.retry-btn {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.retry-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* ── Approval Modal Overlay ── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: #111827;
+  border: 1px solid var(--success);
+  border-radius: 10px;
+  padding: 2rem;
+  max-width: 520px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  box-shadow: 0 0 60px rgba(16, 185, 129, 0.15);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-title {
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.modal-scenario-name {
+  font-size: 1.15rem;
+  font-weight: bold;
+  font-family: var(--font-mono);
+  color: var(--success);
+  letter-spacing: 0.03em;
+}
+
+.modal-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.modal-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.modal-row .ml {
+  color: var(--text-muted);
+}
+
+.modal-row .mr {
+  color: var(--text-main);
+  font-weight: bold;
+}
+
+.modal-row .mr.success-val {
+  color: var(--success);
+}
+
+.modal-row .mr.warning-val {
+  color: var(--warning);
+}
+
+.modal-note {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: rgba(255,255,255,0.03);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--accent);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.modal-cancel-btn {
+  flex: 1;
+  padding: 0.85rem;
+  background: transparent;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.05em;
+}
+
+.modal-cancel-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+.modal-confirm-btn {
+  flex: 2;
+  padding: 0.85rem;
+  background: var(--success);
+  border: none;
+  border-radius: 6px;
+  color: #000;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.06em;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.3);
+}
+
+.modal-confirm-btn:hover:not(:disabled) {
+  background: #0ea472;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.5);
+}
+
+.modal-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

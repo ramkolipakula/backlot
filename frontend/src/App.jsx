@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import './index.css';
 
 const formatMoney = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -7,6 +7,257 @@ const formatTime = (isoString) => {
   const d = new Date(isoString);
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
 };
+
+// ── Phase 4: Confirmation Modal ───────────────────────────────────────────── //
+
+function ConfirmModal({ scenario, onCancel, onConfirm, isConfirming }) {
+  const hardOutTime = new Date(scenario.actor_hard_out_utc);
+  const wrapTime = new Date(scenario.projected_wrap_utc);
+  const deltaMin = Math.round((hardOutTime - wrapTime) / 60000);
+
+  const scenarioLabel =
+    scenario.id === 'intervention-a' ? 'A — HARDWARE SWAP' :
+    scenario.id === 'intervention-b' ? 'B — BAND B + BUFFER BYPASS' :
+    'C — ABANDON / RESCHEDULE';
+
+  const hardOutStatusLabel = scenario.actor_hard_out_breached
+    ? 'BREACHED'
+    : `PRESERVED · ${deltaMin} MIN BUFFER`;
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+      <div className="modal-card">
+        <div>
+          <div className="modal-title" id="modal-heading">Decision Requires Confirmation</div>
+          <div className="modal-scenario-name" style={{ marginTop: '0.5rem' }}>{scenarioLabel}</div>
+        </div>
+
+        <div className="modal-table">
+          <div className="modal-row">
+            <span className="ml">Selected Intervention:</span>
+            <span className="mr">{scenarioLabel}</span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Recovery:</span>
+            <span className="mr">{scenario.recovery_minutes} min</span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Remaining Delay:</span>
+            <span className="mr warning-val">{scenario.remaining_delay_minutes} min</span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Projected Wrap:</span>
+            <span className="mr">{formatTime(scenario.projected_wrap_utc)}</span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Actor Hard-Out:</span>
+            <span className="mr">18:30</span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Status:</span>
+            <span className={`mr ${scenario.actor_hard_out_breached ? '' : 'success-val'}`}>
+              {hardOutStatusLabel}
+            </span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Total Exposure:</span>
+            <span className="mr">{formatMoney(scenario.total_usd)}</span>
+          </div>
+          <div className="modal-row">
+            <span className="ml">Savings vs Baseline:</span>
+            <span className="mr success-val">{formatMoney(scenario.net_savings_usd)}</span>
+          </div>
+        </div>
+
+        <div className="modal-note">
+          BACKLOT will record this approved intervention as a Grafana annotation.
+          This is a decision record — BACKLOT does not control production equipment directly.
+        </div>
+
+        <div className="modal-actions">
+          <button
+            id="modal-cancel-btn"
+            className="modal-cancel-btn"
+            onClick={onCancel}
+            disabled={isConfirming}
+          >
+            CANCEL
+          </button>
+          <button
+            id="modal-confirm-btn"
+            className="modal-confirm-btn"
+            onClick={onConfirm}
+            disabled={isConfirming}
+          >
+            {isConfirming ? 'RECORDING...' : 'APPROVE & RECORD'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Phase 4: Approval Panel ───────────────────────────────────────────────── //
+
+/**
+ * approvalState:
+ *   'idle'      — show approve button
+ *   'recording' — write in progress (button disabled)
+ *   'success'   — annotation created
+ *   'failure'   — write failed (show retry)
+ */
+function ApprovalPanel({ scenario, incidentData }) {
+  const [approvalState, setApprovalState] = useState('idle');
+  const [showModal, setShowModal] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [successData, setSuccessData] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  // Prevent duplicate in-flight requests from this client
+  const inFlight = useRef(false);
+
+  // Reset approval state when scenario changes (but never write automatically)
+  useEffect(() => {
+    setApprovalState('idle');
+    setShowModal(false);
+    setSuccessData(null);
+    setErrorMessage('');
+    inFlight.current = false;
+  }, [scenario?.id]);
+
+  const isIntervention = scenario && scenario.id && scenario.id.startsWith('intervention-');
+
+  const handleApproveClick = () => {
+    if (!isIntervention || approvalState === 'recording') return;
+    setShowModal(true);
+  };
+
+  const handleCancel = () => {
+    setShowModal(false);
+  };
+
+  const handleConfirm = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setIsConfirming(true);
+    setShowModal(false);
+    setApprovalState('recording');
+
+    try {
+      const res = await fetch('http://localhost:8000/api/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Only send scenario_id — ALL financial values are resolved server-side
+        body: JSON.stringify({ scenario_id: scenario.id }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+
+      setSuccessData(data);
+      setApprovalState('success');
+    } catch (err) {
+      setErrorMessage(err.message || 'Unknown error');
+      setApprovalState('failure');
+    } finally {
+      setIsConfirming(false);
+      inFlight.current = false;
+    }
+  }, [scenario]);
+
+  const handleRetry = () => {
+    setApprovalState('idle');
+    setErrorMessage('');
+  };
+
+  if (!isIntervention) return null;
+
+  const scenarioLabel =
+    scenario.id === 'intervention-a' ? 'A — HARDWARE SWAP' :
+    scenario.id === 'intervention-b' ? 'B — BAND B + BUFFER BYPASS' :
+    'C — ABANDON / RESCHEDULE';
+
+  return (
+    <>
+      {showModal && (
+        <ConfirmModal
+          scenario={scenario}
+          onCancel={handleCancel}
+          onConfirm={handleConfirm}
+          isConfirming={isConfirming}
+        />
+      )}
+
+      <div className="panel approval-panel">
+        <h2>RECOMMENDED ACTION</h2>
+        <div className="approval-inner">
+
+          {approvalState === 'idle' && (
+            <button
+              id="approve-record-btn"
+              className="approve-btn"
+              onClick={handleApproveClick}
+            >
+              ✓ &nbsp; Approve &amp; Record Decision
+            </button>
+          )}
+
+          {approvalState === 'recording' && (
+            <div className="recording-state" id="recording-state">
+              <div className="recording-spinner" />
+              <span>RECORDING DECISION TO GRAFANA...</span>
+            </div>
+          )}
+
+          {approvalState === 'success' && successData && (
+            <div className="success-state" id="approval-success-state">
+              <div className="success-header">
+                <span className="success-icon">✓</span>
+                <span>DECISION RECORDED</span>
+              </div>
+              <div className="success-scenario-name">{successData.scenario_name?.toUpperCase() || scenarioLabel}</div>
+              <div className="success-detail-line">
+                <span>Human Approved</span>
+                <span>·</span>
+                <span className="sdl-val">{formatTime(successData.projected_wrap_utc)} projected wrap</span>
+              </div>
+              <div className="success-detail-line">
+                <span className="sdl-val">{formatMoney(successData.net_savings_usd)} savings</span>
+                <span>·</span>
+                <span className="sdl-val">{formatMoney(successData.total_usd)} exposure</span>
+              </div>
+              <div className="success-grafana-note">
+                Grafana annotation created
+                {successData.annotation_id ? ` · ID #${successData.annotation_id}` : ''}
+              </div>
+            </div>
+          )}
+
+          {approvalState === 'failure' && (
+            <div className="failure-state" id="approval-failure-state">
+              <div className="failure-header">
+                <span>⚠</span>
+                <span>RECORDING FAILED</span>
+              </div>
+              <div className="failure-detail">
+                Grafana annotation could not be created.<br />
+                {errorMessage}
+              </div>
+              <button className="retry-btn" onClick={handleRetry}>
+                RETRY
+              </button>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────── //
 
 export default function App() {
   const [incidentData, setIncidentData] = useState(null);
@@ -65,7 +316,7 @@ export default function App() {
     .filter(Boolean);
 
   // Timeline computation — values come from backend only.
-  const baseTimeStr = "2026-09-08T14:22:00Z";
+  const baseTimeStr = incidentData.incident_time_utc;
   const baseTime = new Date(baseTimeStr).getTime();
   const wrapTime = new Date(activeData.projected_wrap_utc).getTime();
   const hardOutTime = new Date(activeData.actor_hard_out_utc).getTime();
@@ -83,6 +334,11 @@ export default function App() {
   // Computed purely from the two UTC strings the backend already returned — no new math.
   const hardOutDeltaMinutes = Math.round((wrapTime - hardOutTime) / 60000);
 
+  // Active intervention object (null if baseline selected)
+  const activeIntervention = selectedScenario !== 'baseline'
+    ? interventions.find(i => i.id === selectedScenario) || null
+    : null;
+
   return (
     <div className="control-room">
       <div className="header-panel">
@@ -96,7 +352,7 @@ export default function App() {
         </div>
         <div className="header-right">
           <div className="status-badge halted">STATUS: HALTED</div>
-          <div className="incident-time">14:22 SYSTEM TIME</div>
+          <div className="incident-time">{formatTime(incidentData.incident_time_utc)} SYSTEM TIME</div>
         </div>
       </div>
 
@@ -172,7 +428,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Right Column: Financials, Gantt, Evidence */}
+        {/* Right Column: Financials, Gantt, Evidence, Approval */}
         <div className="right-col">
           
           <div className="panel financial-panel">
@@ -226,7 +482,7 @@ export default function App() {
 
               {/* Lane 1 — incident bar */}
               <div className="gantt-lane lane-incident">
-                <div className="lane-label-left">14:22</div>
+                <div className="lane-label-left">{formatTime(incidentData.incident_time_utc)}</div>
                 <div className="gantt-track">
                   <div className="gantt-bar" style={{ width: `${wrapPercent}%` }} />
                 </div>
@@ -293,6 +549,15 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Phase 4: Approval Panel — only rendered when an intervention is selected */}
+          {activeIntervention && (
+            <ApprovalPanel
+              key={activeIntervention.id}
+              scenario={activeIntervention}
+              incidentData={incidentData}
+            />
+          )}
 
         </div>
       </div>

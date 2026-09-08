@@ -116,6 +116,7 @@ class ProductionCPMEngine:
             recovery_minutes=recovery_minutes,
             remaining_delay_minutes=remaining_delay_minutes,
             projected_wrap_utc=projected_wrap_utc,
+            actor_hard_out_utc=actor_hard_out_utc,
             actor_hard_out_breached=breached,
             idle_waste_usd=idle_waste,
             overtime_surcharge_usd=overtime_surcharge,
@@ -208,6 +209,7 @@ class ProductionCPMEngine:
 
         return InvestigationResult(
             incident_id="citadel-infiltration-stage-04-scene-24",
+            incident_time_utc="2026-09-08T14:22:00Z",
             root_cause=RootCause(
                 entity="optitrack_sync_hub",
                 fault_type="IR_STROBE_INTERFERENCE",

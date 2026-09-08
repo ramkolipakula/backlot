@@ -46,6 +46,7 @@ class InterventionResult(BaseModel):
     recovery_minutes: int
     remaining_delay_minutes: int
     projected_wrap_utc: str
+    actor_hard_out_utc: str
     actor_hard_out_breached: bool
     idle_waste_usd: int
     overtime_surcharge_usd: int
@@ -62,6 +63,7 @@ class Recommendation(BaseModel):
 
 class InvestigationResult(BaseModel):
     incident_id: str
+    incident_time_utc: str
     root_cause: RootCause
     causal_graph: CriticalPathResult
     baseline: FinancialModel
