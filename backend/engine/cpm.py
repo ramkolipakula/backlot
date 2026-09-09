@@ -48,9 +48,14 @@ class ProductionCPMEngine:
         # Longest path using bellman-ford on negated weights (since nx doesn't have longest_path with weights directly that handles our specific structure easily)
         # Actually, for a DAG, nx.dag_longest_path is available
         for u, v in G.edges():
-            G[u][v]['weight'] = G.nodes[u]['duration']
+            G[u][v]['weight'] = G.nodes[u]['duration'] + 0.0001
 
-        longest_path = nx.dag_longest_path(G)
+        # Exclude rejected nodes from critical path calculation
+        rejected_node_ids = {node.id for node in nodes if node.is_rejected_hypothesis}
+        valid_nodes = [n for n in G.nodes() if n not in rejected_node_ids]
+        subG = G.subgraph(valid_nodes)
+
+        longest_path = nx.dag_longest_path(subG)
         
         # Remove START and END from the path
         path_result = [n for n in longest_path if n not in ("START", "END")]
@@ -187,7 +192,7 @@ class ProductionCPMEngine:
             CausalNode(id="DIT_SATURATION", description="DIT Ingest Buffer Saturation", duration_minutes=0),
             # Alternate rejected-hypothesis node: DIT storage failure path (H1 rejected).
             # duration_minutes=45 < STAGE_HALT=195 — the correct critical path wins.
-            CausalNode(id="DIT_STORAGE_HYPOTHESIS", description="[H1 REJECTED] DIT Storage Failure Hypothesis", duration_minutes=45),
+            CausalNode(id="DIT_STORAGE_HYPOTHESIS", description="[H1 REJECTED] DIT Storage Failure Hypothesis", duration_minutes=45, is_rejected_hypothesis=True),
             CausalNode(id="STAGE_HALT", description="Stage 4 Production Halt", duration_minutes=195),
             CausalNode(id="SCHEDULE_DELAY", description="Schedule Delay", duration_minutes=0),
             CausalNode(id="COST_EXPOSURE", description="Cost / Contract Exposure", duration_minutes=0),

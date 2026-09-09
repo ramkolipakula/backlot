@@ -126,26 +126,6 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ---
 
-## Docker
-
-### Backend
-
-```bash
-# From repo root
-docker build -t backlot-backend .
-docker run -p 8000:8000 --env-file .env backlot-backend
-```
-
-### Frontend
-
-```bash
-# From frontend/
-docker build --build-arg VITE_API_URL=http://localhost:8000 -t backlot-frontend .
-docker run -p 80:80 backlot-frontend
-```
-
----
-
 ## Annotation Timestamp Architecture
 
 The Grafana annotation created on approval is anchored to the **incident time** (`2026-09-08T14:22:00Z`, epoch_ms `1788877320000`), not the wall-clock approval time. This is a deliberate demo-architecture decision: the annotation appears at the correct forensic position on the Grafana timeline, not at a future timestamp.

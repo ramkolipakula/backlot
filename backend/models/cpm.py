@@ -23,6 +23,7 @@ class CausalNode(BaseModel):
     id: str
     description: str
     duration_minutes: int
+    is_rejected_hypothesis: bool = False
 
 class CausalEdge(BaseModel):
     source: str
