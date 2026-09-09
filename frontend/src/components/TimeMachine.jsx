@@ -13,10 +13,10 @@ export default function TimeMachine({
     .filter(Boolean);
 
   const formatScenarioName = (id) => {
-    if (id === 'intervention-a') return 'HARDWARE SWAP';
-    if (id === 'intervention-b') return 'TRACKING FAILOVER';
+    if (id === 'intervention-a') return 'REPLACE THE TRACKING HARDWARE';
+    if (id === 'intervention-b') return 'SWITCH TO BACKUP TRACKING';
     if (id === 'intervention-c') return 'RESCHEDULE';
-    return 'BASELINE';
+    return 'CURRENT COURSE';
   };
 
   const getNumber = (scenarioStr) => {
@@ -31,15 +31,19 @@ export default function TimeMachine({
   const wrapItems = [];
   
   // Incident & Hard out
-  wrapItems.push({ time: incidentData.incident_time_utc, label: 'INCIDENT', type: 'incident' });
-  wrapItems.push({ time: activeData.actor_hard_out_utc, label: 'ACTOR HARD-OUT', type: 'hard-out' });
+  wrapItems.push({ time: incidentData.incident_time_utc, label: 'FILMING STOPS', type: 'incident' });
+  wrapItems.push({ time: activeData.actor_hard_out_utc, label: 'ACTOR MUST LEAVE', type: 'hard-out' });
   
   // Baseline wrap
-  wrapItems.push({ time: baseline.projected_wrap_utc, label: 'BASELINE', type: 'wrap', id: 'baseline' });
+  wrapItems.push({ time: baseline.projected_wrap_utc, label: 'CURRENT COURSE WRAP', type: 'wrap', id: 'baseline' });
   
   // Intervention wraps
   orderedInterventions.forEach((inv, idx) => {
-    wrapItems.push({ time: inv.projected_wrap_utc, label: `OPTION ${String.fromCharCode(65+idx)}`, type: 'wrap', id: inv.id });
+    let label = 'WRAP';
+    if (inv.id === 'intervention-a') label = 'HARDWARE SWAP WRAP';
+    if (inv.id === 'intervention-b') label = 'BACKUP TRACKING WRAP';
+    if (inv.id === 'intervention-c') label = 'RESCHEDULE WRAP';
+    wrapItems.push({ time: inv.projected_wrap_utc, label: label, type: 'wrap', id: inv.id });
   });
 
   // Sort by time
@@ -70,15 +74,18 @@ export default function TimeMachine({
           >
             <div className="strip-header">
               <span className="strip-num">00</span>
-              <span className="strip-name">BASELINE</span>
+              <div>
+                <div className="strip-name">CURRENT COURSE</div>
+                <div className="panel-subtitle" style={{marginTop: '4px', opacity: 0.8}}>Continue without intervention</div>
+              </div>
             </div>
             <div className="strip-metrics">
               <div className="strip-metric">
-                <span className="sml">WRAP</span>
+                <span className="sml">NEW WRAP TIME</span>
                 <span className="smr">{formatTime(baseline.projected_wrap_utc)}</span>
               </div>
               <div className="strip-metric">
-                <span className="sml">EXPOSURE</span>
+                <span className="sml">TOTAL COST</span>
                 <span className="smr">{formatMoney(baseline.total_blast_radius_usd || baseline.total_usd)}</span>
               </div>
             </div>
@@ -90,26 +97,30 @@ export default function TimeMachine({
               className={`scenario-strip ${selectedScenario === inv.id ? 'active' : ''} ${inv.recommended ? 'recommended' : ''}`}
               onClick={() => setSelectedScenario(inv.id)}
             >
-              {inv.recommended && <div className="rec-bar">RECOMMENDED</div>}
+              {inv.recommended && <div className="rec-bar">RECOMMENDED &middot; BEST OUTCOME</div>}
               <div className="strip-header">
                 <span className="strip-num">{getNumber(inv.id)}</span>
-                <span className="strip-name">{formatScenarioName(inv.id)}</span>
+                <div>
+                  <div className="strip-name">{formatScenarioName(inv.id)}</div>
+                  {inv.id === 'intervention-a' && <div className="panel-subtitle" style={{marginTop: '4px', opacity: 0.8}}>Swap the affected tracking equipment</div>}
+                  {inv.id === 'intervention-b' && <div className="panel-subtitle" style={{marginTop: '4px', opacity: 0.8}}>Move the camera to the backup tracking channel</div>}
+                </div>
               </div>
               <div className="strip-metrics">
                 <div className="strip-metric">
-                  <span className="sml">RECOVERY</span>
+                  <span className="sml">TIME TO RECOVER</span>
                   <span className="smr">{inv.recovery_minutes} MIN</span>
                 </div>
                 <div className="strip-metric">
-                  <span className="sml">PROJECTED WRAP</span>
+                  <span className="sml">NEW WRAP TIME</span>
                   <span className="smr">{formatTime(inv.projected_wrap_utc)}</span>
                 </div>
                 <div className="strip-metric">
-                  <span className="sml">EXPOSURE</span>
+                  <span className="sml">TOTAL COST</span>
                   <span className="smr">{formatMoney(inv.total_usd)}</span>
                 </div>
                 <div className="strip-metric savings-metric">
-                  <span className="sml">SAVINGS</span>
+                  <span className="sml">MONEY SAVED</span>
                   <span className="smr">{formatMoney(inv.net_savings_usd)}</span>
                 </div>
               </div>

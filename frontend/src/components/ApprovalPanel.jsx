@@ -93,8 +93,9 @@ export default function ApprovalPanel({ scenario, incidentData }) {
 
       {approvalState === 'success' && successData && (
         <div className="approval-status success cinematic-fade-in">
-          <div className="status-header">DECISION COMMITTED</div>
-          <div className="status-sub">GRAFANA ANNOTATION WRITTEN</div>
+          <div className="status-header">DECISION APPROVED</div>
+          <div className="status-sub" style={{marginBottom: '8px'}}>The production decision has been recorded.</div>
+          <div className="status-sub" style={{opacity: 0.7}}>Grafana annotation written</div>
           <div className="status-time">{formatTime(new Date().toISOString())} UTC</div>
         </div>
       )}

@@ -7,7 +7,7 @@ export default function FinancialBlastRadius({ activeData, selectedScenario, inc
   return (
     <div className="panel financial-panel">
       <div className="panel-header">
-        <h2>FINANCIAL BLAST RADIUS</h2>
+        <h2>COST OF THE DELAY</h2>
       </div>
       
       <div className="fin-blast-total">
@@ -16,11 +16,11 @@ export default function FinancialBlastRadius({ activeData, selectedScenario, inc
 
       <div className="fin-line-items">
         <div className="fin-row">
-          <span className="fin-label">IDLE</span>
+          <span className="fin-label">STAGE DELAY</span>
           <span className="fin-value">{formatMoney(activeData.idle_waste_usd ?? activeData.idle_cost_usd)}</span>
         </div>
         <div className="fin-row">
-          <span className="fin-label">OT SURCHARGE</span>
+          <span className="fin-label">OVERTIME</span>
           <span className="fin-value">{formatMoney(activeData.overtime_surcharge_usd)}</span>
         </div>
         <div className="fin-row">
@@ -34,7 +34,7 @@ export default function FinancialBlastRadius({ activeData, selectedScenario, inc
       </div>
 
       <div className="fin-savings-row">
-        <span className="fin-label">SAVINGS VS BASELINE</span>
+        <span className="fin-label">SAVED VS. DOING NOTHING</span>
         <span className="fin-value-large savings-val">
           {isBaseline ? '$0' : `+${formatMoney(activeData.net_savings_usd)}`}
         </span>

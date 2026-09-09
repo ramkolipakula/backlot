@@ -31,6 +31,23 @@ export default function AgentTerminal({ events, investigating, runAgent }) {
             } else if (ev.type === 'TOOL_CALL') {
                 msg = `QUERYING GRAFANA TELEMETRY: ${ev.tools}`;
             }
+
+            // Map technical backend agent outputs to cinematic plain English
+            if (msg.includes('Investigating: Investigate Stage 4 tracking packet drop ratio')) {
+              msg = 'Investigating the camera tracking problem';
+            } else if (msg.includes('Querying Grafana for available datasources')) {
+              msg = 'Checking production data in Grafana...';
+            } else if (msg.includes('Discovered 13 datasource(s)')) {
+              msg = 'Production data sources found';
+            } else if (msg.includes('Testing hypothesis H1:') && msg.includes('DIT storage failure')) {
+              msg = 'Testing possibility: FOOTAGE STORAGE FAILURE';
+            } else if (msg === 'H1 rejected') {
+              msg = 'STORAGE FAILURE NOT SUPPORTED BY THE DATA';
+            } else if (msg.includes('Testing hypothesis H2:') && msg.includes('optical tracking disruption')) {
+              msg = 'Testing possibility: CAMERA TRACKING FAILURE';
+            } else if (msg === 'H2 supported by telemetry') {
+              msg = 'TRACKING FAILURE SUPPORTED BY THE DATA';
+            }
             
             return (
               <li key={i} className={`term-line ${ev.type.toLowerCase()}`}>
@@ -41,6 +58,29 @@ export default function AgentTerminal({ events, investigating, runAgent }) {
           })}
           {investigating && <li className="blinking-cursor">_</li>}
         </ul>
+      </div>
+
+      <div className="provenance-area" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
+        <div>
+          <div style={{ color: 'var(--text-muted)' }}>DATA SOURCE</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Grafana Cloud</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)' }}>TELEMETRY</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Prometheus</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)' }}>LOGS</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Loki</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)' }}>AI INVESTIGATION</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Gemini + Google ADK</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--text-muted)' }}>DECISION WRITEBACK</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Grafana MCP</div>
+        </div>
       </div>
     </div>
   );

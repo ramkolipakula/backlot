@@ -15,7 +15,7 @@ export default function IncidentHeader({ incidentTimeStr }) {
         </div>
         
         <div className="stage-info">
-          STAGE 04 &middot; VIRTUAL PRODUCTION VOLUME
+          STAGE 04 &middot; VIRTUAL PRODUCTION
         </div>
         
         <div className="incident-status-banner">
