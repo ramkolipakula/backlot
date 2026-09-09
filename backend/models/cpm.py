@@ -74,3 +74,25 @@ class InvestigationResult(BaseModel):
     baseline: FinancialModel
     interventions: List[InterventionResult]
     recommendation: Recommendation
+
+class ManualObservation(BaseModel):
+    description: str
+    severity: str
+    timestamp: str
+
+class ProductionParameters(BaseModel):
+    stage_idle_cost_per_minute: int
+    crew_ot_surcharge_per_minute: int
+    actor_hard_out_utc: str
+    actor_penalty: int
+    current_delay_minutes: int
+    estimated_recovery_minutes: int
+
+class ManualIncidentRequest(BaseModel):
+    production_name: str
+    scene: str
+    stage: str
+    incident_time_utc: str
+    description: str
+    observations: List[ManualObservation]
+    production_parameters: ProductionParameters

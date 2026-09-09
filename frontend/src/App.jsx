@@ -8,20 +8,30 @@ import EvidenceTimeline from './components/EvidenceTimeline';
 import TimeMachine from './components/TimeMachine';
 import FinancialBlastRadius from './components/FinancialBlastRadius';
 import AgentTerminal from './components/AgentTerminal';
+import ManualIncidentForm from './components/ManualIncidentForm';
 
 export default function App() {
+  const [appMode, setAppMode] = useState('demo'); // 'demo' or 'manual'
   const [incidentData, setIncidentData] = useState(null);
   const [selectedScenario, setSelectedScenario] = useState('baseline');
   const [events, setEvents] = useState([]);
   const [investigating, setInvestigating] = useState(false);
+  const [manualRequest, setManualRequest] = useState(null);
   const hasStartedAgent = useRef(false);
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/incident`)
-      .then(res => res.json())
-      .then(data => setIncidentData(data))
-      .catch(console.error);
-  }, []);
+    if (appMode === 'demo') {
+      fetch(`${import.meta.env.VITE_API_URL}/api/incident`)
+        .then(res => res.json())
+        .then(data => setIncidentData(data))
+        .catch(console.error);
+    } else {
+      setIncidentData(null);
+      setEvents([]);
+      hasStartedAgent.current = false;
+      setManualRequest(null);
+    }
+  }, [appMode]);
 
   const runAgent = () => {
     setEvents([]);
@@ -30,6 +40,9 @@ export default function App() {
     eventSource.onmessage = (e) => {
       const data = JSON.parse(e.data);
       setEvents(prev => [...prev, data]);
+      if (data.type === 'CPM_RESULT') {
+        setIncidentData(data.result);
+      }
       if (data.type === 'ERROR' || data.type === 'INVESTIGATION_COMPLETE') {
         setInvestigating(false);
         eventSource.close();
@@ -41,12 +54,75 @@ export default function App() {
     };
   };
 
+  const runManualAgent = async (payload) => {
+    setEvents([]);
+    setInvestigating(true);
+    setManualRequest(payload);
+    hasStartedAgent.current = true;
+    
+    // First get the baseline incident data
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/incident/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      setIncidentData(data);
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Then start streaming
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/stream/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+        
+        let eventData = '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            eventData = line.substring(6);
+            try {
+              const parsed = JSON.parse(eventData);
+              setEvents(prev => [...prev, parsed]);
+              if (parsed.type === 'CPM_RESULT') {
+                setIncidentData(parsed.result);
+              }
+              if (parsed.type === 'ERROR' || parsed.type === 'INVESTIGATION_COMPLETE') {
+                setInvestigating(false);
+              }
+            } catch (e) {
+              console.error('Parse error', e);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      setInvestigating(false);
+    }
+  };
+
   useEffect(() => {
-    if (incidentData && !hasStartedAgent.current) {
+    if (appMode === 'demo' && incidentData && !hasStartedAgent.current) {
       hasStartedAgent.current = true;
       runAgent();
     }
-  }, [incidentData]);
+  }, [incidentData, appMode]);
 
   const activeData = useMemo(() => {
     if (!incidentData) return null;
@@ -54,8 +130,16 @@ export default function App() {
     return incidentData.interventions.find(i => i.id === selectedScenario);
   }, [incidentData, selectedScenario]);
 
+  if (appMode === 'manual' && !manualRequest) {
+    return (
+      <BacklotShell appMode={appMode} setAppMode={setAppMode}>
+        <ManualIncidentForm onSubmit={runManualAgent} />
+      </BacklotShell>
+    );
+  }
+
   if (!incidentData) return (
-    <BacklotShell>
+    <BacklotShell appMode={appMode} setAppMode={setAppMode}>
       <div className="loading-screen">
         <div className="loading-text">INITIALIZING SECURE CONNECTION...</div>
       </div>
@@ -63,9 +147,14 @@ export default function App() {
   );
 
   return (
-    <BacklotShell>
+    <BacklotShell appMode={appMode} setAppMode={setAppMode}>
       <div className="control-room">
-        <IncidentHeader incidentTimeStr={incidentData.incident_time_utc} />
+        <IncidentHeader 
+          incidentTimeStr={incidentData.incident_time_utc} 
+          sceneOverride={appMode === 'manual' ? manualRequest?.scene : null}
+          productionOverride={appMode === 'manual' ? manualRequest?.production_name : null}
+          stageOverride={appMode === 'manual' ? manualRequest?.stage : null}
+        />
         
         <div className="main-layout">
           {/* Left Column: Causal & Terminal & Evidence */}
@@ -78,7 +167,7 @@ export default function App() {
             <AgentTerminal 
               events={events} 
               investigating={investigating} 
-              runAgent={runAgent} 
+              runAgent={appMode === 'manual' ? () => runManualAgent(manualRequest) : runAgent} 
             />
           </div>
 

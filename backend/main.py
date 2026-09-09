@@ -8,7 +8,9 @@ from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
 
 from backend.agent.backlot_agent import BacklotAgentRunner
+from backend.agent.manual_agent import ManualAgentRunner
 from backend.engine.cpm import ProductionCPMEngine
+from backend.models.cpm import ManualIncidentRequest
 from backend.approval import ApprovalService
 
 load_dotenv()
@@ -86,6 +88,29 @@ async def get_incident():
     """
     engine = ProductionCPMEngine()
     return engine.process_incident()
+
+
+# ── Phase 4: Approval endpoint ────────────────────────────────────────────── #
+
+@app.post("/api/incident/manual")
+async def post_manual_incident(request: ManualIncidentRequest):
+    """
+    Returns the deterministic manual incident, causal graph, and counterfactual interventions.
+    """
+    engine = ProductionCPMEngine(
+        idle_cost=request.production_parameters.stage_idle_cost_per_minute,
+        overtime_surcharge=request.production_parameters.crew_ot_surcharge_per_minute,
+        actor_penalty=request.production_parameters.actor_penalty
+    )
+    return engine.process_manual_incident(request)
+
+@app.post("/api/stream/manual")
+async def stream_manual(request: ManualIncidentRequest):
+    """
+    Streams a manual BACKLOT investigation as Server-Sent Events.
+    """
+    runner = ManualAgentRunner()
+    return EventSourceResponse(runner.stream_generator(request))
 
 
 # ── Phase 4: Approval endpoint ────────────────────────────────────────────── #

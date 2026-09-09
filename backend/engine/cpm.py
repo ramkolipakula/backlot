@@ -4,17 +4,15 @@ from datetime import datetime, timedelta
 
 from backend.models.cpm import (
     Evidence, RootCause, CausalNode, CausalEdge, CriticalPathResult,
-    FinancialModel, InterventionResult, Recommendation, InvestigationResult
+    FinancialModel, InterventionResult, Recommendation, InvestigationResult,
+    ManualIncidentRequest
 )
 
 class ProductionCPMEngine:
-    IDLE_COST_PER_MINUTE = 450
-    OVERTIME_SURCHARGE_PER_MINUTE = 225
-    ACTOR_PENALTY = 50000
-
-    def __init__(self):
-        # We can pass any canonical constants here if we wanted
-        pass
+    def __init__(self, idle_cost=450, overtime_surcharge=225, actor_penalty=50000):
+        self.IDLE_COST_PER_MINUTE = idle_cost
+        self.OVERTIME_SURCHARGE_PER_MINUTE = overtime_surcharge
+        self.ACTOR_PENALTY = actor_penalty
 
     def validate_graph(self, nodes: List[CausalNode], edges: List[CausalEdge]) -> nx.DiGraph:
         """Validates that the provided nodes and edges form a valid DAG."""
@@ -332,3 +330,76 @@ class ProductionCPMEngine:
             recommendation=rec
         )
 
+    def process_manual_incident(self, request: ManualIncidentRequest, evidence: list = None) -> InvestigationResult:
+        safe_evidence = evidence if evidence else []
+
+        nodes = [
+            CausalNode(id="INCIDENT_START", description="Incident Observation", duration_minutes=0),
+            CausalNode(id="STAGE_HALT", description="Production Halt", duration_minutes=request.production_parameters.current_delay_minutes),
+            CausalNode(id="COST_EXPOSURE", description="Cost Exposure", duration_minutes=0),
+        ]
+        
+        edges = [
+            CausalEdge(source="INCIDENT_START", target="STAGE_HALT"),
+            CausalEdge(source="STAGE_HALT", target="COST_EXPOSURE"),
+        ]
+
+        cp_result = self.calculate_critical_path(nodes, edges)
+
+        incident_time = datetime.strptime(request.incident_time_utc, "%Y-%m-%dT%H:%M:%SZ")
+        wrap_time = incident_time + timedelta(minutes=request.production_parameters.current_delay_minutes)
+        baseline_wrap_utc = wrap_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        baseline = self.calculate_financials(
+            delay_minutes=request.production_parameters.current_delay_minutes,
+            projected_wrap_utc=baseline_wrap_utc,
+            actor_hard_out_utc=request.production_parameters.actor_hard_out_utc
+        )
+
+        recovery_minutes = request.production_parameters.estimated_recovery_minutes
+        
+        interv_wrap_time = incident_time + timedelta(minutes=recovery_minutes)
+        interv_wrap_utc = interv_wrap_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        interventions = []
+        interventions.append(self.calculate_intervention(
+            i_id="intervention-manual",
+            name="Implement Recovery Strategy",
+            recovery_minutes=recovery_minutes,
+            remaining_delay_minutes=recovery_minutes,
+            projected_wrap_utc=interv_wrap_utc,
+            actor_hard_out_utc=request.production_parameters.actor_hard_out_utc,
+            direct_fee=0
+        ))
+
+        # Compute savings and rank
+        for i in interventions:
+            i.net_savings_usd = baseline.total_blast_radius_usd - i.total_usd
+            
+        interventions.sort(key=lambda x: x.total_usd)
+        
+        for idx, i in enumerate(interventions):
+            i.rank = idx + 1
+            if i.rank == 1:
+                i.recommended = True
+
+        rec = Recommendation(
+            intervention_id=interventions[0].id if interventions else "",
+            reason="Primary recovery strategy."
+        )
+
+        return InvestigationResult(
+            incident_id=f"manual-{request.production_name.lower().replace(' ', '-')}-{request.scene.lower().replace(' ', '-')}",
+            incident_time_utc=request.incident_time_utc,
+            root_cause=RootCause(
+                entity="unknown",
+                fault_type="MANUAL_OBSERVATION",
+                confidence="HIGH",
+                evidence=safe_evidence,
+                evidence_supports_conclusion=True,
+            ),
+            causal_graph=cp_result,
+            baseline=baseline,
+            interventions=interventions,
+            recommendation=rec
+        )
