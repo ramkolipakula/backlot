@@ -1,12 +1,11 @@
 """
 BACKLOT Phase 1 — Grafana Investigation Agent
-Architecture: FastAPI → Google ADK Runner → Gemini 2.5 Flash → McpToolset → Official Grafana MCP
+Architecture: FastAPI -> Google ADK Runner -> Gemini 3.6 Flash -> McpToolset -> Official Grafana MCP
 """
 import os
 import json
 import asyncio
 import logging
-import shutil
 from datetime import datetime, timezone, timedelta
 from typing import AsyncGenerator
 
@@ -19,52 +18,9 @@ from google.genai import types as genai_types
 from mcp import StdioServerParameters
 
 from backend.engine.cpm import ProductionCPMEngine
+from backend.mcp.resolver import resolve_mcp_grafana_command
 
 logger = logging.getLogger("backlot.agent")
-
-def resolve_mcp_grafana_command():
-    """Resolve the mcp-grafana launcher command, checking PATH and known fallback locations."""
-    env_cmd = os.getenv('MCP_GRAFANA_COMMAND')
-    if env_cmd:
-        parts = env_cmd.split()
-        return parts[0], parts[1:]
-
-    # Check PATH first
-    mcp_grafana = shutil.which('mcp-grafana')
-    if mcp_grafana:
-        return mcp_grafana, []
-
-    uvx = shutil.which('uvx')
-    if uvx:
-        return uvx, ['mcp-grafana']
-
-    # Fallback: probe known Windows Python Scripts directories not always on PATH
-    import pathlib
-    fallback_dirs = []
-    userprofile = os.environ.get('USERPROFILE', '')
-    localappdata = os.environ.get('LOCALAPPDATA', '')
-    if userprofile:
-        # pythoncore-3.x-64 style installations
-        local_py = pathlib.Path(userprofile) / 'AppData' / 'Local' / 'Python'
-        if local_py.is_dir():
-            for sub in sorted(local_py.iterdir(), reverse=True):
-                fallback_dirs.append(sub / 'Scripts')
-        # uv's own bin
-        fallback_dirs.append(pathlib.Path(userprofile) / 'AppData' / 'Local' / 'uv' / 'bin')
-        fallback_dirs.append(pathlib.Path(userprofile) / '.local' / 'bin')
-    if localappdata:
-        fallback_dirs.append(pathlib.Path(localappdata) / 'uv' / 'bin')
-
-    for d in fallback_dirs:
-        for name in ('uvx.exe', 'uvx', 'mcp-grafana.exe', 'mcp-grafana'):
-            candidate = d / name
-            if candidate.is_file():
-                if 'mcp-grafana' in name:
-                    return str(candidate), []
-                else:  # uvx
-                    return str(candidate), ['mcp-grafana']
-
-    return None, []
 
 # Known telemetry query tool names from official Grafana MCP v1.3.0
 _PROMETHEUS_QUERY_TOOLS = {"query_prometheus", "query_prometheus_histogram"}
@@ -91,6 +47,10 @@ class BacklotAgentRunner:
         # Runtime-enforced tool call counter
         self._tool_call_count = 0
         self._max_tool_calls = 5
+        # Evidence collected from TELEMETRY_RECEIVED events during _handle_adk_event.
+        # Built from live Grafana MCP responses; passed into process_incident() at
+        # the RUNNING_CPM_ENGINE step. Never populated from any other source.
+        self._collected_evidence: list = []
 
     # ------------------------------------------------------------------ #
     # Event helpers                                                        #
@@ -340,7 +300,13 @@ STRICT RULES:
                 )
                 try:
                     cpm_engine = ProductionCPMEngine()
-                    investigation_result = cpm_engine.process_incident()
+                    # Pass evidence collected from live TELEMETRY_RECEIVED events
+                    # (sourced from _handle_adk_event above) into the deterministic
+                    # engine. Evidence populates RootCause.evidence and drives
+                    # confidence assessment — it NEVER alters financial constants.
+                    investigation_result = cpm_engine.process_incident(
+                        evidence=self._collected_evidence
+                    )
                     await self._queue.put(
                         self._evt(
                             "CPM_RESULT",
@@ -574,7 +540,21 @@ STRICT RULES:
                                     {"tool": tool_name, "message": f"{tool_name} returned data."},
                                 )
                             )
-                            # Ground truth: MCP response is the evidence
+                            # Ground truth: MCP response is the evidence.
+                            # Also collect into _collected_evidence so process_incident()
+                            # can receive it as structured Evidence objects.
+                            from backend.models.cpm import Evidence as EvidenceModel
+                            try:
+                                ev_obj = EvidenceModel(
+                                    source="grafana_mcp",
+                                    datasource_uid=str(tool_name),
+                                    query=str(tool_name),
+                                    timestamp=self._now(),
+                                    value=str(actual_data[0])[:500] if actual_data else None,
+                                )
+                                self._collected_evidence.append(ev_obj)
+                            except Exception as ev_err:
+                                logger.warning("Could not construct Evidence object: %s", ev_err)
                             await self._queue.put(
                                 self._evt(
                                     "TELEMETRY_RECEIVED",

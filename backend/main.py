@@ -17,11 +17,14 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="BACKLOT Phase 1-4")
 
-# NOTE: CORS is permissive for local development only.
-# In production, restrict allow_origins to your actual frontend domain.
+# CORS: read from ALLOWED_ORIGINS env var (comma-separated list).
+# Falls back to ["*"] for local development only — set ALLOWED_ORIGINS in production.
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # DEVELOPMENT ONLY
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,7 +66,7 @@ async def stream(query: str):
     """
     Streams a BACKLOT investigation as Server-Sent Events.
     The investigation path is:
-        FastAPI → ADK Runner → Gemini 2.5 Flash → McpToolset → Official Grafana MCP → Grafana Cloud
+        FastAPI -> ADK Runner -> Gemini 3.6 Flash -> McpToolset -> Official Grafana MCP -> Grafana Cloud
     """
     runner = BacklotAgentRunner()
     return EventSourceResponse(runner.stream_generator(query))
@@ -73,6 +76,13 @@ async def get_incident():
     """
     Returns the deterministic incident, causal graph, baseline financial model,
     and counterfactual interventions.
+
+    Design note: This endpoint returns the CANONICAL BASELINE scenario — it is
+    independent of any specific Gemini/ADK investigation run. Evidence collected
+    during a live investigation is passed to the CPM engine inside the /api/stream
+    pipeline (via BacklotAgentRunner) and reflected in the CPM_RESULT SSE event.
+    This endpoint always returns the same four verified dollar figures:
+        Baseline: $181,625  |  A: $103,125  |  B: $14,700  |  C: $87,100
     """
     engine = ProductionCPMEngine()
     return engine.process_incident()

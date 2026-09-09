@@ -17,7 +17,7 @@ export default function App() {
   const hasStartedAgent = useRef(false);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/incident')
+    fetch(`${import.meta.env.VITE_API_URL}/api/incident`)
       .then(res => res.json())
       .then(data => setIncidentData(data))
       .catch(console.error);
@@ -26,7 +26,7 @@ export default function App() {
   const runAgent = () => {
     setEvents([]);
     setInvestigating(true);
-    const eventSource = new EventSource(`http://localhost:8000/api/stream?query=${encodeURIComponent("Investigate Stage 4 tracking packet drop ratio")}`);
+    const eventSource = new EventSource(`${import.meta.env.VITE_API_URL}/api/stream?query=${encodeURIComponent("Investigate Stage 4 tracking packet drop ratio")}`);
     eventSource.onmessage = (e) => {
       const data = JSON.parse(e.data);
       setEvents(prev => [...prev, data]);
@@ -70,7 +70,7 @@ export default function App() {
         <div className="main-layout">
           {/* Left Column: Causal & Terminal & Evidence */}
           <div className="col-left">
-            <EvidenceTimeline />
+            <EvidenceTimeline events={events} />
             <CausalReconstruction 
               causal_graph={incidentData.causal_graph} 
               selectedScenario={selectedScenario} 

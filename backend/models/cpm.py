@@ -14,6 +14,10 @@ class RootCause(BaseModel):
     fault_type: str
     confidence: str
     evidence: List[Evidence]
+    # True  → passed evidence contains the expected tracking/packet-drop pattern.
+    # False → passed evidence contradicts the root-cause pattern.
+    # None  → no evidence was passed (baseline/demo path); conclusion unchanged.
+    evidence_supports_conclusion: Optional[bool] = None
 
 class CausalNode(BaseModel):
     id: str

@@ -5,7 +5,6 @@ Architecture: React → FastAPI → MCP client → Official Grafana MCP → Graf
 import os
 import asyncio
 import logging
-import shutil
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -15,49 +14,11 @@ from mcp.client.session import ClientSession
 
 from backend.engine.cpm import ProductionCPMEngine
 from backend.models.cpm import InterventionResult, InvestigationResult
+from backend.mcp.resolver import resolve_mcp_grafana_command
 
 logger = logging.getLogger("backlot.approval")
 
-# ── MCP command resolution (same pattern as backlot_agent.py) ─────────────── #
-
-def resolve_mcp_grafana_command():
-    """Resolve the mcp-grafana launcher command."""
-    env_cmd = os.getenv("MCP_GRAFANA_COMMAND")
-    if env_cmd:
-        parts = env_cmd.split()
-        return parts[0], parts[1:]
-    mcp_grafana = shutil.which("mcp-grafana")
-    if mcp_grafana:
-        return mcp_grafana, []
-    uvx = shutil.which("uvx")
-    if uvx:
-        return uvx, ["mcp-grafana"]
-
-    import pathlib
-    fallback_dirs = []
-    userprofile = os.environ.get("USERPROFILE", "")
-    localappdata = os.environ.get("LOCALAPPDATA", "")
-    if userprofile:
-        local_py = pathlib.Path(userprofile) / "AppData" / "Local" / "Python"
-        if local_py.is_dir():
-            for sub in sorted(local_py.iterdir(), reverse=True):
-                fallback_dirs.append(sub / "Scripts")
-        fallback_dirs.append(pathlib.Path(userprofile) / "AppData" / "Local" / "uv" / "bin")
-        fallback_dirs.append(pathlib.Path(userprofile) / ".local" / "bin")
-    if localappdata:
-        fallback_dirs.append(pathlib.Path(localappdata) / "uv" / "bin")
-
-    for d in fallback_dirs:
-        for name in ("uvx.exe", "uvx", "mcp-grafana.exe", "mcp-grafana"):
-            candidate = d / name
-            if candidate.is_file():
-                if "mcp-grafana" in name:
-                    return str(candidate), []
-                else:
-                    return str(candidate), ["mcp-grafana"]
-
-    return None, []
-
+# resolve_mcp_grafana_command imported from backend.mcp.resolver (P2-platform-specific-paths)
 
 # ── Scenario name display map ──────────────────────────────────────────────── #
 
@@ -208,8 +169,22 @@ class ApprovalService:
         scenario = next(i for i in incident.interventions if i.id == scenario_id)
 
         # ── 3. Build annotation payload ───────────────────────────────────── #
-        now_utc = datetime.strptime(incident.incident_time_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        decision_ts_ms = int(now_utc.timestamp() * 1000)
+        #
+        # DELIBERATE DEMO-ARCHITECTURE DECISION (OVERRIDE 1 / P1-approval-timestamp):
+        # decision_ts_ms is derived from incident.incident_time_utc, NOT from
+        # datetime.now(timezone.utc). The Grafana annotation's 'time' field
+        # intentionally represents WHEN THE INCIDENT OCCURRED, not when the human
+        # clicked Approve. This keeps the annotation anchored to the canonical
+        # incident timeline on the Grafana dashboard — a deliberate choice so that
+        # the annotation appears at the correct point in the forensic timeline
+        # (2026-09-08T14:22:00Z / epoch_ms 1788877320000), not at approval-click time.
+        #
+        # approval_recorded_at captures the actual wall-clock human-click time for
+        # observability purposes only. It MUST NOT be substituted into decision_ts_ms
+        # or the Grafana annotation 'time' field.
+        incident_dt = datetime.strptime(incident.incident_time_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        decision_ts_ms = int(incident_dt.timestamp() * 1000)  # == 1788877320000
+        approval_recorded_at = datetime.now(timezone.utc)  # wall-clock only, NEVER used in annotation
         # actor_hard_out_utc lives on FinancialModel (baseline), not InterventionResult
         actor_hard_out_utc = incident.baseline.actor_hard_out_utc
         annotation_args = build_annotation_payload(
@@ -339,7 +314,13 @@ class ApprovalService:
             "remaining_delay_minutes": scenario.remaining_delay_minutes,
             "total_usd": scenario.total_usd,
             "net_savings_usd": scenario.net_savings_usd,
-            "decision_timestamp_utc": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            # Annotation timestamp basis — visible to API caller (OVERRIDE 1 / P1-approval-timestamp).
+            # The Grafana annotation 'time' field is anchored to the incident time, not
+            # the approval click time. See execute_approval() comment for full rationale.
+            "annotation_timestamp_basis": "incident_time",
+            "decision_timestamp_utc": incident_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            # Wall-clock human-click time — observability only, never in annotation.
+            "approval_recorded_at": approval_recorded_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "mcp_tool": "create_annotation",
             "verification": verification_result,
         }

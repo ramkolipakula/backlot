@@ -29,7 +29,7 @@ export default function DecisionModal({ scenario, onCancel, onConfirm, isConfirm
           </div>
           <div className="modal-row">
             <span className="ml">Actor must leave</span>
-            <span className="mr">18:30</span>
+            <span className="mr">{formatTime(scenario.actor_hard_out_utc)}</span>
           </div>
           <div className="modal-row">
             <span className="ml">Total cost</span>
