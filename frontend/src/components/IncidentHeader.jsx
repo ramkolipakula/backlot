@@ -1,0 +1,28 @@
+import { formatTime } from './utils';
+
+export default function IncidentHeader({ incidentTimeStr }) {
+  return (
+    <div className="incident-hero">
+      <div className="hero-top-bar">
+        <span className="app-title">BACKLOT</span>
+        <span className="app-subtitle">LIVE INVESTIGATION</span>
+      </div>
+      
+      <div className="hero-main">
+        <div className="scene-info">
+          <div className="scene-number">SCENE 24</div>
+          <div className="scene-name">THE CITADEL INFILTRATION</div>
+        </div>
+        
+        <div className="stage-info">
+          STAGE 04 &middot; VIRTUAL PRODUCTION VOLUME
+        </div>
+        
+        <div className="incident-status-banner">
+          <span className="time">{formatTime(incidentTimeStr)} UTC</span>
+          <span className="status-badge alert">PRODUCTION HALTED</span>
+        </div>
+      </div>
+    </div>
+  );
+}
