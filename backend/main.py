@@ -1,5 +1,6 @@
 import os
 import asyncio
+import json
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from backend.approval import ApprovalService
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("backlot.main")
 
 app = FastAPI(title="BACKLOT Phase 1-4")
 
@@ -36,6 +38,28 @@ app.add_middleware(
 # A simple asyncio.Lock is sufficient for a single-process server.
 _approval_lock = asyncio.Lock()
 _approval_in_flight: bool = False
+
+
+async def _safe_sse_stream(generator, endpoint_name: str):
+    """
+    Forward SSE events while converting generator failures into a safe error event.
+    Exceptions can happen after HTTP headers have been sent, so they cannot be
+    converted into a normal HTTP error response at that point.
+    """
+    try:
+        async for event in generator:
+            yield event
+    except asyncio.CancelledError:
+        # A client disconnect is normal for a streaming response; preserve cancellation.
+        raise
+    except Exception:
+        logger.exception("Unhandled error in %s stream", endpoint_name)
+        yield {
+            "event": "error",
+            "data": json.dumps({
+                "message": "The investigation stream failed. Please retry."
+            }),
+        }
 
 
 # ── Phase 4: Approval request model ──────────────────────────────────────── #
@@ -70,8 +94,22 @@ async def stream(query: str):
     The investigation path is:
         FastAPI -> ADK Runner -> Gemini 3.6 Flash -> McpToolset -> Official Grafana MCP -> Grafana Cloud
     """
-    runner = BacklotAgentRunner()
-    return EventSourceResponse(runner.stream_generator(query))
+    try:
+        runner = BacklotAgentRunner()
+        return EventSourceResponse(_safe_sse_stream(
+            runner.stream_generator(query), "/api/stream"
+        ))
+    except HTTPException:
+        raise
+    except (ValueError, TypeError) as exc:
+        logger.warning("Invalid /api/stream request: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid investigation request.") from exc
+    except Exception as exc:
+        logger.exception("Failed to initialize /api/stream")
+        raise HTTPException(
+            status_code=500, detail="Unable to start the investigation stream."
+        ) from exc
+
 
 @app.get("/api/incident")
 async def get_incident():
@@ -86,31 +124,66 @@ async def get_incident():
     This endpoint always returns the same four verified dollar figures:
         Baseline: $181,625  |  A: $103,125  |  B: $14,700  |  C: $87,100
     """
-    engine = ProductionCPMEngine()
-    return engine.process_incident()
+    try:
+        engine = ProductionCPMEngine()
+        return engine.process_incident()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to build canonical incident response")
+        raise HTTPException(
+            status_code=500, detail="Unable to calculate the incident response."
+        ) from exc
 
 
-# ── Phase 4: Approval endpoint ────────────────────────────────────────────── #
+# ── Phase 4: Manual incident endpoints ───────────────────────────────────── #
 
 @app.post("/api/incident/manual")
 async def post_manual_incident(request: ManualIncidentRequest):
     """
     Returns the deterministic manual incident, causal graph, and counterfactual interventions.
     """
-    engine = ProductionCPMEngine(
-        idle_cost=request.production_parameters.stage_idle_cost_per_minute,
-        overtime_surcharge=request.production_parameters.crew_ot_surcharge_per_minute,
-        actor_penalty=request.production_parameters.actor_penalty
-    )
-    return engine.process_manual_incident(request)
+    try:
+        engine = ProductionCPMEngine(
+            idle_cost=request.production_parameters.stage_idle_cost_per_minute,
+            overtime_surcharge=request.production_parameters.crew_ot_surcharge_per_minute,
+            actor_penalty=request.production_parameters.actor_penalty
+        )
+        return engine.process_manual_incident(request)
+    except HTTPException:
+        raise
+    except (ValueError, TypeError) as exc:
+        logger.warning("Invalid manual incident request: %s", exc)
+        raise HTTPException(
+            status_code=400, detail="Manual incident parameters are invalid."
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to process manual incident")
+        raise HTTPException(
+            status_code=500, detail="Unable to process the manual incident."
+        ) from exc
+
 
 @app.post("/api/stream/manual")
 async def stream_manual(request: ManualIncidentRequest):
     """
     Streams a manual BACKLOT investigation as Server-Sent Events.
     """
-    runner = ManualAgentRunner()
-    return EventSourceResponse(runner.stream_generator(request))
+    try:
+        runner = ManualAgentRunner()
+        return EventSourceResponse(_safe_sse_stream(
+            runner.stream_generator(request), "/api/stream/manual"
+        ))
+    except HTTPException:
+        raise
+    except (ValueError, TypeError) as exc:
+        logger.warning("Invalid /api/stream/manual request: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid manual investigation request.") from exc
+    except Exception as exc:
+        logger.exception("Failed to initialize /api/stream/manual")
+        raise HTTPException(
+            status_code=500, detail="Unable to start the manual investigation stream."
+        ) from exc
 
 
 # ── Phase 4: Approval endpoint ────────────────────────────────────────────── #
@@ -147,15 +220,21 @@ async def approve_intervention(request: ApprovalRequest):
         service = ApprovalService()
         result = await service.execute_approval(request.scenario_id)
         return result
+    except HTTPException:
+        raise
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        logger.warning("Invalid approval request: %s", exc)
+        raise HTTPException(status_code=400, detail="Approval request is invalid.") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.warning("Approval service failed: %s", exc)
+        raise HTTPException(
+            status_code=502, detail="The upstream approval service failed."
+        ) from exc
     except Exception as exc:
-        logging.getLogger("backlot.main").error(
-            "Unexpected error in /api/approve: %s", exc, exc_info=True
-        )
-        raise HTTPException(status_code=500, detail=f"Internal error: {exc}")
+        logger.exception("Unexpected error in /api/approve")
+        raise HTTPException(
+            status_code=500, detail="An unexpected server error occurred."
+        ) from exc
     finally:
         async with _approval_lock:
             _approval_in_flight = False
